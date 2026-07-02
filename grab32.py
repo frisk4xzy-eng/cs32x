@@ -1,4 +1,4 @@
-### cs32x-dev/utils/grab32.py - VERSION 20260619
+### cs32x-dev/utils/grab32.py - VERSION 20260702
 """
 This script simplifies the work a learner in one of my classes
 must do to grab the files needed for a course unit, which are
@@ -7,7 +7,7 @@ stored in a public GitHub repository.
 If a learner wants the files for `m04b`, they'd run this script in
 the course codespace as follows:
 
-$ python3 grab32.py m04b
+$ python3 grab{COURSE_NUM}.py m04b
 
 The input parameter (i.e., `m04b` in this example) should match the
 name of a public GitHub repo for this course.  The script will place
@@ -24,25 +24,50 @@ Date: June 2026
 """
 
 import os
+import re
 import subprocess
 import sys
+from urllib import request, error
 import zipfile
+
+######
+###
+### COURSE-SPECIFIC CHANGES GO IN THIS BLOCK ONLY
+###
 
 # Course-specific global constants and configuration parameters
 COURSE_NUM = '32'
 COURSE_NAME = f'cs{COURSE_NUM}x'
 
-VALID_REPOS = ['m01'] \
-    + [f'm02{p}' for p in 'abcdefg'] \
-    + [f'm03{p}' for p in 'abcdefg'] \
-    + [f'm04{p}' for p in 'abcde'] \
-    + ['m05'] \
-    + [f'm07{p}' for p in 'abcdefghi']
-
 # Global constants and configuration parameters
 ORG_URL = f'https://github.com/{COURSE_NAME}/'
 CODESPACES_ROOT = f'/workspaces/{COURSE_NAME}'
 MAIN_ZIP_PATH = '/archive/refs/heads/main.zip'
+
+def determine_dst(module, item):
+    """Determine the destination directory for a given file item"""
+    # In CS32x, there are no special files.
+    return os.path.join(module, item)
+
+###
+### END COURSE-SPECIFIC CHANGES
+###
+######
+
+
+def repo_exists(repo: str, timeout: float = 10.0):
+    """Used to check if a repo exists with this url"""
+    url = ORG_URL + repo + MAIN_ZIP_PATH
+    req = request.Request(url, method="HEAD")
+    try:
+        with request.urlopen(req, timeout=timeout) as resp:
+            return 200 <= resp.status < 400
+    except error.HTTPError as e:
+        # e.code will have the HTTP status (404, 403, etc.)
+        return False
+    except error.URLError:
+        # DNS failure, refused connection, etc.
+        return False
 
 
 def validate_working_dir():
@@ -127,48 +152,48 @@ def move_files(repo, module):
     clean_needed = False
 
     # Process the unzipped files in zip_dir. If module doesn't yet
-    # exist, we rename zip_dir as module. If it does exist, we 
-    # process each file in zip_dir. We move a file to module if it
-    # doesn't already exist there. If it does exist in module, we
-    # move it to clean_dir (if this directory exists) or mark that
-    # we need to rename zip_dir as clean_dir.
+    # exist, we create it. The code moves a file if it doesn't already
+    # exist at the destination directory. If it does exist, we move it
+    # to clean_dir (if this directory exists) or mark that we need to
+    # zip_dir as clean_dir when we're done. Some files are have special
+    # handling.
     if not os.path.exists(module):
-        # Module doesn't exist. Rename the zip_dir and be done.
-        my_rename(zip_dir, module)
-        print(f"... Renamed {zip_dir} to {module}")
-    else:
-        # Module exists. We must process each file.
-        for item in os.listdir(zip_dir):
-            src = os.path.join(zip_dir, item)
-            dst = os.path.join(module, item)
+        # Module doesn't exist. Create it.
+        os.mkdir(module)
+        print(f"... Created {module} folder")
 
-            if not os.path.exists(dst):
-                # No pre-existing src file in module. Move src to module.
-                my_rename(src, dst)
-                print(f"... Moved {src} to {dst}")
+    # Process each file in zip_dir
+    for item in os.listdir(zip_dir):
+        src = os.path.join(zip_dir, item)
+        dst = determine_dst(module, item)
 
-            elif clean_exists:
-                # If dst already exists and clean_dir exists, move src to clean_dir
-                dst_clean = os.path.join(clean_dir, item)
-                my_rename(src, dst_clean)
-                print(f"... Moved {src} to {dst_clean}")
+        if not os.path.exists(dst):
+            # No pre-existing src file in module. Move src to module.
+            my_rename(src, dst)
+            print(f"... Moved {src} to {dst}")
 
-            else:
-                # Remember to move whatever remains in zip_dir to clean_dir after processing all files
-                clean_needed = True
-                print(f"... Not moving {src}")
+        elif clean_exists:
+            # If dst already exists and clean_dir exists, move src to clean_dir
+            dst_clean = os.path.join(clean_dir, item)
+            my_rename(src, dst_clean)
+            print(f"... Moved {src} to {dst_clean}")
 
-        if clean_needed:
-            # Move the remaining files in zip_dir to clean_dir
-            my_rename(zip_dir, clean_dir)
-            print(f"... Renamed {zip_dir} to {clean_dir}")
         else:
-            # Remove the now-empty zip_dir
-            try:
-                os.rmdir(zip_dir)
-                print(f"... Removed empty directory {zip_dir}")
-            except Exception as e:
-                sys.exit(f"ERROR removing directory {zip_dir}: {e}")
+            # Remember to move whatever remains in zip_dir to clean_dir after processing all files
+            clean_needed = True
+            print(f"... Not moving {src}")
+
+    if clean_needed:
+        # Move the remaining files in zip_dir to clean_dir
+        my_rename(zip_dir, clean_dir)
+        print(f"... Renamed {zip_dir} to {clean_dir}")
+    else:
+        # Remove the now-empty zip_dir
+        try:
+            os.rmdir(zip_dir)
+            print(f"... Removed empty directory {zip_dir}")
+        except Exception as e:
+            sys.exit(f"ERROR removing directory {zip_dir}: {e}")
 
 
 def main():
@@ -179,7 +204,7 @@ def main():
     repo = sys.argv[1]
 
     # Check validity of input parameter and gracefully handle bad parameters
-    if repo not in VALID_REPOS:
+    if not repo_exists(repo):
         sys.exit(f"ERROR: {repo} is not valid; did you mistype it?")
 
     # Start alerting the user to our progress
