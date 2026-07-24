@@ -1,4 +1,4 @@
-### cs32x-dev/utils/grab32.py - VERSION 20260702
+### cs32x-dev/utils/grab32.py - VERSION 20260724
 """
 This script simplifies the work a learner in one of my classes
 must do to grab the files needed for a course unit, which are
@@ -105,6 +105,56 @@ def my_rename(frompath, topath):
         sys.exit(f"ERROR: {e}")
 
 
+def move_item(src, dst, clean_dir, clean_exists, relpath):
+    """Move `src` to `dst`, merging into `dst` when both are directories.
+
+    When `dst` already exists as a non-directory conflict (or a file),
+    move `src` into `clean_dir` if it exists; otherwise leave `src` in
+    place and report that a clean copy is needed.
+
+    Returns True if any conflicting item was left in place for a later
+    rename of the remaining zip tree to `clean_dir`.
+    """
+    if not os.path.exists(dst):
+        # Destination is free. Move src there.
+        my_rename(src, dst)
+        print(f"... Moved {src} to {dst}")
+        return False
+
+    if os.path.isdir(src) and os.path.isdir(dst):
+        # Both are directories: merge by moving each child individually.
+        clean_needed = False
+        for item in os.listdir(src):
+            child_src = os.path.join(src, item)
+            child_dst = os.path.join(dst, item)
+            child_rel = os.path.join(relpath, item) if relpath else item
+            if move_item(child_src, child_dst, clean_dir, clean_exists, child_rel):
+                clean_needed = True
+        # Remove src if it is now empty (all children were moved).
+        try:
+            if not os.listdir(src):
+                os.rmdir(src)
+                print(f"... Removed empty directory {src}")
+        except Exception as e:
+            sys.exit(f"ERROR removing directory {src}: {e}")
+        return clean_needed
+
+    if clean_exists:
+        # Conflict, and clean_dir already exists: move src into it,
+        # preserving relative path under clean_dir.
+        dst_clean = os.path.join(clean_dir, relpath)
+        parent = os.path.dirname(dst_clean)
+        if parent and not os.path.exists(parent):
+            os.makedirs(parent, exist_ok=True)
+        my_rename(src, dst_clean)
+        print(f"... Moved {src} to {dst_clean}")
+        return False
+
+    # Conflict and no clean_dir yet: leave src in place for later rename.
+    print(f"... Not moving {src}")
+    return True
+
+
 def process_zipfile(repo):
     """Downlads, extracts, and deletes the zipfile for the specified repo"""
     # Create URL to a zipfile of the specified github repo
@@ -153,10 +203,12 @@ def move_files(repo, module):
 
     # Process the unzipped files in zip_dir. If module doesn't yet
     # exist, we create it. The code moves a file if it doesn't already
-    # exist at the destination directory. If it does exist, we move it
-    # to clean_dir (if this directory exists) or mark that we need to
-    # zip_dir as clean_dir when we're done. Some files are have special
-    # handling.
+    # exist at the destination directory. If a directory already exists
+    # at the destination, its children are merged in recursively. If a
+    # conflicting file (or non-mergeable item) exists, we move it to
+    # clean_dir (if this directory exists) or mark that we need to
+    # rename zip_dir as clean_dir when we're done. Some files have
+    # special handling.
     if not os.path.exists(module):
         # Module doesn't exist. Create it.
         os.mkdir(module)
@@ -166,22 +218,8 @@ def move_files(repo, module):
     for item in os.listdir(zip_dir):
         src = os.path.join(zip_dir, item)
         dst = determine_dst(module, item)
-
-        if not os.path.exists(dst):
-            # No pre-existing src file in module. Move src to module.
-            my_rename(src, dst)
-            print(f"... Moved {src} to {dst}")
-
-        elif clean_exists:
-            # If dst already exists and clean_dir exists, move src to clean_dir
-            dst_clean = os.path.join(clean_dir, item)
-            my_rename(src, dst_clean)
-            print(f"... Moved {src} to {dst_clean}")
-
-        else:
-            # Remember to move whatever remains in zip_dir to clean_dir after processing all files
+        if move_item(src, dst, clean_dir, clean_exists, item):
             clean_needed = True
-            print(f"... Not moving {src}")
 
     if clean_needed:
         # Move the remaining files in zip_dir to clean_dir
