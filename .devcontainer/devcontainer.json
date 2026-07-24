@@ -6,6 +6,9 @@
   "postCreateCommand": "pip install --upgrade pip",
   // "postCreateCommand": "pip install --upgrade pip && pip install jupyter numpy pandas matplotlib",
 
+  // Fix the prompt on every restart
+  "postStartCommand": "echo 'export PS1=\"\\w$ \"' >> ~/.bashrc",
+
   "customizations": {
     "vscode": {
       "settings": {
