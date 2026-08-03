@@ -1,10 +1,10 @@
 {
   "name": "Python Codespace",
-  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12-bookworm",
 
   // Install extra Python packages here if you like:
   "postCreateCommand": "pip install --upgrade pip",
-  // "postCreateCommand": "pip install --upgrade pip && pip install jupyter numpy pandas matplotlib",
+  // "postCreateCommand": "pip install --upgrade pip && pip install ipykernel numpy pandas matplotlib",
 
   // Fix the prompt on every restart
   "postStartCommand": "echo 'export PS1=\"\\w$ \"' >> ~/.bashrc",
@@ -34,7 +34,9 @@
         "editor.tabCompletion": "off"                // no tab‑completion cycling
       },
       "extensions": [
-        "ms-python.python"
+        "ms-python.python",
+        "ms-toolsai.jupyter",
+        "ms-python.vscode-pylance"
         // NOTE: do NOT list GitHub Copilot or other AI extensions here
       ]
     }
